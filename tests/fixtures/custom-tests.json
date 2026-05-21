@@ -1,0 +1,248 @@
+[
+	{ "name": "", "comment": "Empty" },
+	{ "name": " ", "error": true, "comment": "Empty: Whitespace" },
+	{ "name": "\uFE0F", "error": true, "comment": "Empty: Ignorable" },
+
+	{ "name": ".", "error": true, "comment": "Null Labels" },
+	{ "name": ".eth", "error": true, "comment": "Null 2LD" },
+	{ "name": "eth.", "error": true, "comment": "Null TLD" },
+	{ "name": "...eth", "error": true, "comment": "Multiple Null Labels" },
+
+	{ "name": "\uFF0E", "error": true, "comment": "Disallowed Stop: FF0E" },
+	{ "name": "\u3002", "error": true, "comment": "Disallowed Stop: 3002" },
+	{ "name": "\uFF61", "error": true, "comment": "Disallowed Stop: FF61" },
+
+	{ "name": "vitalik.eth", "comment": "Trivial Name" },
+	{ "name": "123.eth", "comment": "Trivial Digit Name" },
+	{ "name": "abcdefghijklmnopqrstuvwxyz-0123456789", "comment": "DNS Name" },
+	{ "name": "bRAnTlY.eTh", "norm": "brantly.eth", "comment": "Mixed-case" },
+	{
+		"name": "BRANTLYMILLEGAN.COM",
+		"norm": "brantlymillegan.com",
+		"comment": "Uppercase"
+	},
+	{ "name": "brantly.cash", "comment": "Custom domain" },
+	{ "name": "nowzad.loopring.eth", "comment": "Subdomain" },
+
+	{ "name": "öbb.at", "comment": "IDNATestV2" },
+	{ "name": "Öbb.at", "norm": "öbb.at", "comment": "IDNATestV2" },
+	{ "name": "◌̈bb.at", "error": true, "comment": "IDNATestV2" },
+
+	{ "name": "ß", "comment": "IDNA deviation" },
+	{ "name": "ς", "comment": "IDNA deviation" },
+
+	{ "name": "Ⅷ", "norm": "viii", "comment": "Mapping: roman numeral" },
+
+	{ "name": "Ⓜ", "norm": "m", "comment": "Mapping: circled" },
+	{ "name": "Ⓜ️", "norm": "m", "comment": "Mapping: demoji" },
+	{
+		"name": "⓫⓬⓭⓮⓯⓰⓱⓲⓳⓴⓿",
+		"error": true,
+		"comment": "negative circled (11-20,0)"
+	},
+	{ "name": "⓵⓶⓷⓸⓹⓺⓻⓼⓽⓾", "error": true, "comment": "double circled (1-10)" },
+	{
+		"name": "➊➋➌➍➎➏➐➑➒➓",
+		"error": true,
+		"comment": "negative circled san-serif (1-10)"
+	},
+	{
+		"name": "❶❷❸❹❺❻❼❽❾❿",
+		"error": true,
+		"comment": "negative circled (1-10)"
+	},
+	{
+		"name": "ⒶⒷⒸⒹⒺⒻⒼⒽⒾⒿⓀⓁⓂⓃⓄⓅⓆⓇⓈⓉⓊⓋⓌⓍⓎⓏ",
+		"norm": "abcdefghijklmnopqrstuvwxyz",
+		"comment": "circled (A-Z)"
+	},
+	{
+		"name": "ⓐⓑⓒⓓⓔⓕⓖⓗⓘⓙⓚⓛⓜⓝⓞⓟⓠⓡⓢⓣⓤⓥⓦⓧⓨⓩ",
+		"norm": "abcdefghijklmnopqrstuvwxyz",
+		"comment": "circled (a-z)"
+	},
+	{
+		"name": "🅐🅑🅒🅓🅔🅕🅖🅗🅘🅙🅚🅛🅜🅝🅞🅟🅠🅡🅢🅣🅤🅥🅦🅧🅨🅩",
+		"error": true,
+		"comment": "negative circled san-serif (A-Z)"
+	},
+	{
+		"name": "🅰🅱🅲🅳🅴🅵🅶🅷🅸🅹🅺🅻🅼🅽🅾🅿🆀🆁🆂🆃🆄🆅🆆🆇🆈🆉",
+		"comment": "negative squared (A-Z)"
+	},
+
+	{ "name": " ", "error": true, "comment": "Whitespace" },
+	{ "name": "te st", "error": true, "comment": "Whitespace: inner" },
+	{ "name": " test", "error": true, "comment": "Whitespace: leading" },
+	{ "name": "test ", "error": true, "comment": "Whitespace: trailing" },
+	{ "name": "test\u200D", "error": true, "comment": "ZWJ: trailing" },
+	{ "name": "\u200Dtest", "error": true, "comment": "ZWJ: leading" },
+
+	{ "name": "'a", "error": true, "comment": "Apostrophe: leading" },
+	{ "name": "a’", "error": true, "comment": "Apostrophe: leading" },
+	{ "name": "a'’a", "error": true, "comment": "Apostrophe: adjacent" },
+	{ "name": "a'a’a", "norm": "a’a’a", "comment": "Apostrophe" },
+
+	{ "name": "l·l", "error": true, "comment": "ContextO: middle dot" },
+	{ "name": "a·b", "error": true, "comment": "ContextO: invalid middle dot" },
+
+	{
+		"name": "\uFE0E\uFE0Fa",
+		"norm": "a",
+		"comment": "Ignored: emoji-styling"
+	},
+
+	{
+		"name": "0️⃣1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣7️⃣8️⃣9️⃣",
+		"norm": "0⃣1⃣2⃣3⃣4⃣5⃣6⃣7⃣8⃣9⃣",
+		"comment": "Emoji: Keycaps"
+	},
+	{ "name": "#️⃣*️⃣", "norm": "#⃣*⃣", "comment": "Emoji: Revived Keycaps" },
+
+	{ "name": "_a", "comment": "Leading Underscore" },
+	{ "name": "_____a", "comment": "Leading Underscore" },
+	{ "name": "a_b", "error": true, "comment": "Non-leading Underscore" },
+
+	{ "name": "$¢£¤¥₡₦₩₪₫€₭₮₱₲₴₵₸₹₺₼₽₾⃀₿ξ.؋", "comment": "Currency symbols" },
+
+	{ "name": "\u0303", "error": true, "comment": "Leading CM" },
+	{ "name": ".\u0303.", "error": true, "comment": "Leading CM" },
+	{ "name": "💩\u0303", "error": true, "comment": "Emoji + CM" },
+
+	{
+		"name": "àáâãāäåăąćĉčçèéêẽēëěęğìíîïǐǹńñòóôõöǒōšśşùúûüǔūýỳžźż",
+		"comment": "Exemplars: Latn"
+	},
+	{ "name": "άέήίϊΐϋόύΰώ", "comment": "Exemplars: Grek" },
+	{ "name": "ѓёӣйїќўӯ", "comment": "Exemplars: Cyrl" },
+	{
+		"name": "ガギグゲゴザジズゼゾダヂヅデドバパビピブプベペボポヴヷヸヹヺヾ",
+		"comment": "Exemplars: Kata"
+	},
+	{
+		"name": "がぎぐげござじずぜぞだぢづでどばぱびぴぶぷべぺぼぽゔゞ",
+		"comment": "Exemplars: Hira"
+	},
+
+	{
+		"name": "àáâãāäåăǖ",
+		"error": true,
+		"comment": "Whitelisted CM: disallowed char"
+	},
+	{
+		"name": "àáâãa\u0303\u0303āäåă",
+		"error": true,
+		"comment": "Whitelisted CM: illegal mixture"
+	},
+
+	{
+		"name": "\u0622\u064D\u064D",
+		"error": true,
+		"comment": "NSM: repeated w/NFD expansion"
+	},
+	{
+		"name": "\u0622\u064D\u064D\u064D",
+		"error": true,
+		"comment": "NSM: repeated w/NFD expansion"
+	},
+	{
+		"name": "\u0929\u0900\u0900",
+		"error": true,
+		"comment": "NSM: repeated w/NFD expansion"
+	},
+
+	{ "name": "\u0625\u0610\u0611\u0612", "comment": "NSM: at max" },
+	{
+		"name": "\u0625\u0610\u0611\u0612\u0613",
+		"error": true,
+		"comment": "NSM: too many (5/4)"
+	},
+	{
+		"name": "\u0625\u0610\u0611\u0612\u0613\u0614",
+		"error": true,
+		"comment": "NSM: too many (6/4)"
+	},
+
+	{ "name": "🇦", "error": true, "comment": "Single regional indicator" },
+	{
+		"name": "🇦🇦",
+		"error": true,
+		"comment": "Double regional indicator: invalid flag sequence"
+	},
+	{
+		"name": "🇺🇸",
+		"comment": "Double regional indicator: valid flag sequence"
+	},
+
+	{ "name": "xn--ls8h", "error": true, "comment": "Punycode Literal" },
+	{
+		"name": "te--st",
+		"error": true,
+		"comment": "CheckHyphens, Section 4.1 Rule #2 (ASCII)"
+	},
+	{
+		"name": "xn--💩",
+		"comment": "CheckHyphens, Section 4.1 Rule #2 (Unicode)"
+	},
+	{
+		"name": "test-",
+		"comment": "CheckHyphens, Section 4.1 Rule #3A (Ignored)"
+	},
+	{
+		"name": "-test",
+		"comment": "CheckHyphens, Section 4.1 Rule #3B (Ignored)"
+	},
+	{ "name": "t-e--s---t", "comment": "Hyphen: multiple" },
+	{
+		"name": "hyphens\u002D\u2010\u2011\u2012\u2013\u2014\u2015\u2043\u2212\u23AF\u23E4\uFE58",
+		"norm": "hyphens------------",
+		"comment": "Hyphens"
+	},
+
+	{ "name": "💩", "comment": "Emoji: unstyled" },
+	{ "name": "💩️", "norm": "💩", "comment": "Emoji: emoji-styled" },
+	{ "name": "💩︎", "norm": "💩", "comment": "Emoji: text-styled" },
+	{ "name": "💩💩︎💩️", "norm": "💩💩💩", "comment": "Emoji: All Styles" },
+	{ "name": "💩\u200D💩", "error": true, "comment": "Poop Joiner" },
+
+	{
+		"name": "👩︎🏽‍⚕️",
+		"error": true,
+		"comment": "Text-styled Modifier Sequence in ZWJ Sequence"
+	},
+	{
+		"name": "🏳\uFE0E\u200D🌈",
+		"error": true,
+		"comment": "Text-styled Emoji in ZWJ Sequence"
+	},
+
+	{ "name": "🌈rainbow", "comment": "Emoji + Text" },
+	{ "name": "rainbow🌈", "comment": "Text + Emoji" },
+
+	{
+		"name": "🏴󠁷󠁴󠁦󠁿",
+		"error": true,
+		"comment": "Invalid Emoji Tag Sequence"
+	},
+
+	{
+		"name": "\u06F0\u06F1\u06F2\u06F3\u06F8\u06F9",
+		"norm": "\u0660\u0661\u0662\u0663\u0668\u0669",
+		"comment": "Arabic Mapping"
+	},
+
+	{ "name": "тӕ", "comment": "confuse" },
+	{ "name": "ᎫᏦᎥ", "error": true, "comment": "confuse" },
+	{ "name": "ꓖꓳꓓ", "error": true, "comment": "confuse" },
+	{ "name": "0x𐱅𐰇𐰼𐰰", "error": true, "comment": "confuse" },
+	{ "name": "аррӏе", "error": true, "comment": "confuse" },
+	{ "name": "ଠ୦୨\u0B01", "error": true, "comment": "confuse" },
+	{ "name": "0nephi⳩", "error": true, "comment": "confuse" },
+	{ "name": "ѐ", "error": true, "comment": "confuse" },
+	{ "name": "0x", "comment": "confuse" },
+	{ "name": "0х", "error": true, "comment": "confuse" },
+	{ "name": "½", "norm": "1⁄2", "comment": "confuse" },
+	{ "name": "黑", "comment": "confuse" },
+	{ "name": "黑a8", "comment": "confuse" },
+	{ "name": "ー一a", "comment": "confuse" }
+]

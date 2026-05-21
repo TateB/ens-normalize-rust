@@ -1,0 +1,24 @@
+name: Update Upstream Data
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "ens-normalize.js git ref, branch, or tag"
+        default: "main"
+        required: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: Swatinem/rust-cache@v2
+      - name: Refresh derived data and fixtures
+        run: scripts/update-upstream.sh "${{ inputs.ref }}"
+      - name: Show changed files
+        run: git status --short

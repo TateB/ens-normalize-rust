@@ -1,0 +1,8 @@
+{
+  "name": "ens-normalize-js-compat",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node validate-wasm.mjs"
+  }
+}

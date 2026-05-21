@@ -1,3 +1,4 @@
+mod intmap;
 mod nf;
 mod spec;
 mod utils;

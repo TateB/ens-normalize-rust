@@ -1,5 +1,5 @@
+use crate::intmap::{IntMap, IntSet};
 use serde::Deserialize;
-use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
 const S0: u32 = 0xAC00;
@@ -24,14 +24,14 @@ struct RawNf {
 }
 
 struct NfData {
-    shifted_rank: HashMap<u32, u32>,
-    decomp: HashMap<u32, Vec<u32>>,
-    recomp: HashMap<u32, HashMap<u32, u32>>,
+    shifted_rank: IntMap<u32, u32>,
+    decomp: IntMap<u32, Vec<u32>>,
+    recomp: IntMap<u32, IntMap<u32, u32>>,
 }
 
 static NF: LazyLock<NfData> = LazyLock::new(|| {
     let raw: RawNf = serde_json::from_str(include_str!("../data/nf.json")).expect("valid nf.json");
-    let mut shifted_rank = HashMap::new();
+    let mut shifted_rank = IntMap::default();
     for (i, cps) in raw.ranks.iter().enumerate() {
         let rank = ((i as u32) + 1) << 24;
         for &cp in cps {
@@ -39,9 +39,9 @@ static NF: LazyLock<NfData> = LazyLock::new(|| {
         }
     }
 
-    let exclusions: HashSet<u32> = raw.exclusions.into_iter().collect();
-    let mut decomp = HashMap::new();
-    let mut recomp: HashMap<u32, HashMap<u32, u32>> = HashMap::new();
+    let exclusions: IntSet<u32> = raw.exclusions.into_iter().collect();
+    let mut decomp = IntMap::default();
+    let mut recomp: IntMap<u32, IntMap<u32, u32>> = IntMap::default();
     for (cp, mut cps) in raw.decomp {
         if !exclusions.contains(&cp) && cps.len() == 2 {
             recomp.entry(cps[0]).or_default().insert(cps[1], cp);

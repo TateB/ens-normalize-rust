@@ -1,10 +1,11 @@
+use crate::intmap::{IntMap, IntSet};
 use crate::nf::{nfc, nfd};
 use crate::utils::{
     EnsError, Result, array_replace, bidi_qq, compare_arrays, explode_cp, quote_cp,
     safe_str_from_cps, str_from_cps,
 };
 use serde::Deserialize;
-use std::collections::{HashMap, HashSet};
+use std::borrow::Cow;
 use std::sync::LazyLock;
 
 const HYPHEN: u32 = 0x2D;
@@ -122,8 +123,8 @@ struct RawGroup {
 
 struct Group {
     name: String,
-    primary: HashSet<u32>,
-    secondary: HashSet<u32>,
+    primary: IntSet<u32>,
+    secondary: IntSet<u32>,
     check_nsm: bool,
 }
 
@@ -134,12 +135,12 @@ impl Group {
 }
 
 struct Whole {
-    complements: HashMap<u32, Vec<usize>>,
+    complements: IntMap<u32, Vec<usize>>,
 }
 
 #[derive(Default)]
 struct EmojiNode {
-    children: HashMap<u32, usize>,
+    children: IntMap<u32, usize>,
     value: Option<Vec<u32>>,
 }
 
@@ -167,18 +168,21 @@ impl EmojiTrie {
 }
 
 struct EnsData {
-    mapped: HashMap<u32, Vec<u32>>,
-    ignored: HashSet<u32>,
-    cm: HashSet<u32>,
-    nsm: HashSet<u32>,
+    mapped: IntMap<u32, Vec<u32>>,
+    ignored: IntSet<u32>,
+    cm: IntSet<u32>,
+    nsm: IntSet<u32>,
+    nsm_check: IntSet<u32>,
     nsm_max: usize,
-    escape: HashSet<u32>,
-    nfc_check: HashSet<u32>,
-    fenced: HashMap<u32, String>,
+    escape: IntSet<u32>,
+    nfc_check: IntSet<u32>,
+    fenced: IntMap<u32, String>,
     groups: Vec<Group>,
-    whole_map: HashMap<u32, usize>,
+    group_members: IntMap<u32, Vec<usize>>,
+    primary_group: IntMap<u32, usize>,
+    whole_map: IntMap<u32, usize>,
     wholes: Vec<Whole>,
-    valid: HashSet<u32>,
+    valid: IntSet<u32>,
     emoji_list: Vec<Vec<u32>>,
     emoji_root: EmojiTrie,
 }
@@ -209,8 +213,26 @@ impl EnsData {
             })
             .collect();
 
+        let mut group_members: IntMap<u32, Vec<usize>> = IntMap::default();
+        let mut primary_group = IntMap::default();
+        for (i, group) in groups.iter().enumerate() {
+            for &cp in &group.primary {
+                primary_group.entry(cp).or_insert(i);
+                let members = group_members.entry(cp).or_default();
+                if !members.contains(&i) {
+                    members.push(i);
+                }
+            }
+            for &cp in &group.secondary {
+                let members = group_members.entry(cp).or_default();
+                if !members.contains(&i) {
+                    members.push(i);
+                }
+            }
+        }
+
         let mut wholes = Vec::new();
-        let mut whole_map = HashMap::new();
+        let mut whole_map = IntMap::default();
         for raw_whole in raw.wholes {
             if raw_whole.confused.is_empty() {
                 continue;
@@ -230,8 +252,8 @@ impl EnsData {
             wholes.push(Whole { complements });
         }
 
-        let mut valid = HashSet::new();
-        let mut multi = HashSet::new();
+        let mut valid = IntSet::default();
+        let mut multi = IntSet::default();
         for g in &groups {
             for &cp in g.primary.iter().chain(g.secondary.iter()) {
                 if !valid.insert(cp) {
@@ -250,6 +272,12 @@ impl EnsData {
         for cp in nfd(&valid_vec) {
             valid.insert(cp);
         }
+        let nsm: IntSet<u32> = raw.nsm.into_iter().collect();
+        let nsm_check: IntSet<u32> = valid
+            .iter()
+            .copied()
+            .filter(|&cp| nfd(&[cp]).iter().any(|part| nsm.contains(part)))
+            .collect();
 
         let mut emoji_list = raw.emoji;
         emoji_list.sort_by(|a, b| compare_arrays(a, b).cmp(&0));
@@ -276,12 +304,15 @@ impl EnsData {
             mapped: raw.mapped.into_iter().collect(),
             ignored: raw.ignored.into_iter().collect(),
             cm: raw.cm.into_iter().collect(),
-            nsm: raw.nsm.into_iter().collect(),
+            nsm,
+            nsm_check,
             nsm_max: raw.nsm_max,
             escape: raw.escape.into_iter().collect(),
             nfc_check: raw.nfc_check.into_iter().collect(),
             fenced: raw.fenced.into_iter().collect(),
             groups,
+            group_members,
+            primary_group,
             whole_map,
             wholes,
             valid,
@@ -302,7 +333,7 @@ fn push_unique(v: &mut Vec<usize>, x: usize) {
     }
 }
 
-fn compute_whole_complements(groups: &[Group], values: &[u32]) -> HashMap<u32, Vec<usize>> {
+fn compute_whole_complements(groups: &[Group], values: &[u32]) -> IntMap<u32, Vec<usize>> {
     let mut recs: Vec<WholeRec> = Vec::new();
     for &cp in values {
         let gs: Vec<usize> = groups
@@ -336,7 +367,7 @@ fn compute_whole_complements(groups: &[Group], values: &[u32]) -> HashMap<u32, V
         }
     }
 
-    let mut complements = HashMap::new();
+    let mut complements = IntMap::default();
     for rec in recs {
         let complement: Vec<usize> = union
             .iter()
@@ -373,7 +404,11 @@ pub fn ens_emoji() -> Vec<Vec<u32>> {
 }
 
 pub fn ens_normalize_fragment(frag: &str, decompose: bool) -> Result<String> {
-    let nf = if decompose { nfd } else { nfc };
+    let nf = if decompose {
+        NormalizeForm::Nfd
+    } else {
+        NormalizeForm::Nfc
+    };
     let mut out = Vec::new();
     for (i, label) in frag.split('.').enumerate() {
         if i > 0 {
@@ -387,11 +422,14 @@ pub fn ens_normalize_fragment(frag: &str, decompose: bool) -> Result<String> {
 }
 
 pub fn ens_normalize(name: &str) -> Result<String> {
-    flatten(split(name, nfc, EmojiFilter::DropFe0f))
+    if let Some(result) = normalize_ascii(name) {
+        return result;
+    }
+    normalize_labels(name)
 }
 
 pub fn ens_beautify(name: &str) -> Result<String> {
-    let mut labels = split(name, nfc, EmojiFilter::Preserve);
+    let mut labels = split(name, NormalizeForm::Nfc, EmojiFilter::Preserve);
     for label in &mut labels {
         if label.error.is_some() {
             break;
@@ -408,7 +446,7 @@ pub fn ens_beautify(name: &str) -> Result<String> {
 pub fn ens_split(name: &str, preserve_emoji: bool) -> Vec<Label> {
     split(
         name,
-        nfc,
+        NormalizeForm::Nfc,
         if preserve_emoji {
             EmojiFilter::Preserve
         } else {
@@ -417,7 +455,7 @@ pub fn ens_split(name: &str, preserve_emoji: bool) -> Vec<Label> {
     )
 }
 
-fn split(name: &str, nf: fn(&[u32]) -> Vec<u32>, ef: EmojiFilter) -> Vec<Label> {
+fn split(name: &str, nf: NormalizeForm, ef: EmojiFilter) -> Vec<Label> {
     if name.is_empty() {
         return Vec::new();
     }
@@ -447,7 +485,7 @@ fn split(name: &str, nf: fn(&[u32]) -> Vec<u32>, ef: EmojiFilter) -> Vec<Label> 
 
 fn process_label(
     input: &[u32],
-    nf: fn(&[u32]) -> Vec<u32>,
+    nf: NormalizeForm,
     ef: EmojiFilter,
     info: &mut Label,
 ) -> Result<()> {
@@ -466,11 +504,17 @@ fn process_label(
         check_label_extension(&output)?;
         "ASCII".to_string()
     } else {
-        let chars: Vec<u32> = tokens
-            .iter()
-            .filter(|t| !t.is_emoji)
-            .flat_map(|t| t.cps.iter().copied())
-            .collect();
+        let chars_storage;
+        let chars: &[u32] = if emoji {
+            chars_storage = tokens
+                .iter()
+                .filter(|t| !t.is_emoji)
+                .flat_map(|t| t.cps.iter().copied())
+                .collect::<Vec<_>>();
+            &chars_storage
+        } else {
+            &output
+        };
         if chars.is_empty() {
             "Emoji".to_string()
         } else {
@@ -488,9 +532,9 @@ fn process_label(
             }
 
             check_fenced(&output)?;
-            let unique = unique_preserving_order(&chars);
+            let unique = unique_preserving_order(chars);
             let group = determine_group(&unique)?;
-            check_group(group, &chars)?;
+            check_group(group, chars)?;
             check_whole(group, &unique)?;
             ENS.groups[group].name.clone()
         }
@@ -500,8 +544,233 @@ fn process_label(
     Ok(())
 }
 
+fn process_label_output(input: &[u32], nf: NormalizeForm, ef: EmojiFilter) -> Result<Vec<u32>> {
+    let tokens = tokens_from_str(input, nf, ef)?;
+    if tokens.is_empty() {
+        return Err(EnsError::new("empty label"));
+    }
+
+    let output: Vec<u32> = tokens.iter().flat_map(|t| t.cps.iter().copied()).collect();
+    check_leading_underscore(&output)?;
+    let emoji = tokens.len() > 1 || tokens[0].is_emoji;
+    if !emoji && output.iter().all(|&cp| cp < 0x80) {
+        check_label_extension(&output)?;
+    } else {
+        let chars_storage;
+        let chars: &[u32] = if emoji {
+            chars_storage = tokens
+                .iter()
+                .filter(|t| !t.is_emoji)
+                .flat_map(|t| t.cps.iter().copied())
+                .collect::<Vec<_>>();
+            &chars_storage
+        } else {
+            &output
+        };
+        if !chars.is_empty() {
+            if ENS.cm.contains(&output[0]) {
+                return Err(error_placement("leading combining mark"));
+            }
+            for i in 1..tokens.len() {
+                if !tokens[i].is_emoji && ENS.cm.contains(&tokens[i].cps[0]) {
+                    let prev = str_from_cps(&tokens[i - 1].cps)?;
+                    let mark = safe_str_from_cps(&[tokens[i].cps[0]], None);
+                    return Err(error_placement(&format!(
+                        "emoji + combining mark: \"{prev} + {mark}\""
+                    )));
+                }
+            }
+
+            check_fenced(&output)?;
+            let unique = unique_preserving_order(chars);
+            let group = determine_group(&unique)?;
+            check_group(group, chars)?;
+            check_whole(group, &unique)?;
+        }
+    }
+
+    Ok(output)
+}
+
+fn process_text_label_output(input: &[u32]) -> Option<Result<Vec<u32>>> {
+    let mut chars = Vec::with_capacity(input.len());
+    for &cp in input {
+        if ENS.emoji_root.nodes[0].children.contains_key(&cp) {
+            return None;
+        }
+        if ENS.valid.contains(&cp) {
+            chars.push(cp);
+        } else if let Some(cps) = ENS.mapped.get(&cp) {
+            chars.extend_from_slice(cps);
+        } else if !ENS.ignored.contains(&cp) {
+            return Some(Err(error_disallowed(cp)));
+        }
+    }
+
+    let output = NormalizeForm::Nfc.apply(&chars);
+    Some(validate_text_label_output(&output).map(|()| output))
+}
+
+fn validate_text_label_output(output: &[u32]) -> Result<()> {
+    if output.is_empty() {
+        return Err(EnsError::new("empty label"));
+    }
+    check_leading_underscore(output)?;
+    if output.iter().all(|&cp| cp < 0x80) {
+        check_label_extension(output)?;
+    } else {
+        if ENS.cm.contains(&output[0]) {
+            return Err(error_placement("leading combining mark"));
+        }
+        check_fenced(output)?;
+        let unique = unique_preserving_order(output);
+        let group = determine_group(&unique)?;
+        check_group(group, output)?;
+        check_whole(group, &unique)?;
+    }
+    Ok(())
+}
+
+fn normalize_labels(name: &str) -> Result<String> {
+    if name.is_empty() {
+        return Ok(String::new());
+    }
+
+    let labels: Vec<&str> = name.split('.').collect();
+    let multiple = labels.len() != 1;
+    let mut out = String::with_capacity(name.len());
+    for (i, label) in labels.iter().enumerate() {
+        if i > 0 {
+            out.push('.');
+        }
+        if let Some(label) = normalize_ascii_label(label) {
+            out.push_str(&label);
+            continue;
+        }
+        let input = explode_cp(label);
+        let result = process_text_label_output(&input).unwrap_or_else(|| {
+            process_label_output(&input, NormalizeForm::Nfc, EmojiFilter::DropFe0f)
+        });
+        match result {
+            Ok(output) => out.push_str(&str_from_cps(&output)?),
+            Err(error) if multiple => {
+                let safe = safe_str_from_cps(&input, Some(63));
+                return Err(EnsError::new(format!(
+                    "Invalid label {}: {}",
+                    bidi_qq(&safe),
+                    error.message()
+                )));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(out)
+}
+
+fn normalize_ascii(name: &str) -> Option<Result<String>> {
+    if name.is_empty() {
+        return Some(Ok(String::new()));
+    }
+    if !name.is_ascii() {
+        return None;
+    }
+
+    let mut start = 0;
+    let mut changed = false;
+    for (i, byte) in name.bytes().enumerate() {
+        if byte == b'.' {
+            if !valid_ascii_label(&name.as_bytes()[start..i]) {
+                return None;
+            }
+            start = i + 1;
+        } else if byte.is_ascii_uppercase() {
+            changed = true;
+        } else if !is_valid_ascii_byte(byte) {
+            return None;
+        }
+    }
+
+    if !valid_ascii_label(&name.as_bytes()[start..]) {
+        return None;
+    }
+
+    if changed {
+        let mut out = String::with_capacity(name.len());
+        for byte in name.bytes() {
+            if byte.is_ascii_uppercase() {
+                out.push(char::from(byte + 32));
+            } else {
+                out.push(char::from(byte));
+            }
+        }
+        Some(Ok(out))
+    } else {
+        Some(Ok(name.to_owned()))
+    }
+}
+
+fn normalize_ascii_label(label: &str) -> Option<Cow<'_, str>> {
+    if label.is_empty() || !label.is_ascii() {
+        return None;
+    }
+    let bytes = label.as_bytes();
+    if !valid_ascii_label(bytes) {
+        return None;
+    }
+
+    let mut changed = false;
+    for &byte in bytes {
+        if byte.is_ascii_uppercase() {
+            changed = true;
+        } else if !is_valid_ascii_byte(byte) {
+            return None;
+        }
+    }
+
+    if changed {
+        let mut out = String::with_capacity(label.len());
+        for byte in label.bytes() {
+            if byte.is_ascii_uppercase() {
+                out.push(char::from(byte + 32));
+            } else {
+                out.push(char::from(byte));
+            }
+        }
+        Some(Cow::Owned(out))
+    } else {
+        Some(Cow::Borrowed(label))
+    }
+}
+
+fn is_valid_ascii_byte(byte: u8) -> bool {
+    matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'$')
+}
+
+fn valid_ascii_label(label: &[u8]) -> bool {
+    if label.is_empty() {
+        return false;
+    }
+    if label.len() >= 4 && label[2] == b'-' && label[3] == b'-' {
+        return false;
+    }
+    match label.iter().rposition(|&cp| cp == b'_') {
+        Some(0) | None => true,
+        Some(pos) => label[..pos].iter().all(|&cp| cp == b'_'),
+    }
+}
+
 fn unique_preserving_order(cps: &[u32]) -> Vec<u32> {
-    let mut seen = HashSet::new();
+    if cps.len() <= 64 {
+        let mut unique = Vec::new();
+        for &cp in cps {
+            if !unique.contains(&cp) {
+                unique.push(cp);
+            }
+        }
+        return unique;
+    }
+
+    let mut seen = IntSet::default();
     let mut unique = Vec::new();
     for &cp in cps {
         if seen.insert(cp) {
@@ -561,25 +830,30 @@ fn check_fenced(cps: &[u32]) -> Result<()> {
 }
 
 fn determine_group(unique: &[u32]) -> Result<usize> {
-    let mut groups: Vec<usize> = (0..ENS.groups.len()).collect();
+    let mut groups: Option<Vec<usize>> = None;
     for &cp in unique {
-        let gs: Vec<usize> = groups
-            .iter()
-            .copied()
-            .filter(|&i| ENS.groups[i].has_cp(cp))
-            .collect();
-        if gs.is_empty() {
-            if !ENS.groups.iter().any(|g| g.has_cp(cp)) {
-                return Err(error_disallowed(cp));
+        let Some(cp_groups) = ENS.group_members.get(&cp) else {
+            return Err(error_disallowed(cp));
+        };
+        let gs: Vec<usize> = if let Some(groups) = groups.take() {
+            let first = groups[0];
+            let filtered: Vec<usize> = groups
+                .into_iter()
+                .filter(|i| cp_groups.contains(i))
+                .collect();
+            if filtered.is_empty() {
+                return Err(error_group_member(first, cp));
             }
-            return Err(error_group_member(groups[0], cp));
+            filtered
+        } else {
+            cp_groups.clone()
+        };
+        if gs.len() == 1 {
+            return Ok(gs[0]);
         }
-        groups = gs;
-        if groups.len() == 1 {
-            break;
-        }
+        groups = Some(gs);
     }
-    Ok(groups[0])
+    Ok(groups.expect("unique has at least one code point")[0])
 }
 
 fn check_group(group: usize, cps: &[u32]) -> Result<()> {
@@ -590,7 +864,7 @@ fn check_group(group: usize, cps: &[u32]) -> Result<()> {
         }
     }
 
-    if g.check_nsm {
+    if g.check_nsm && cps.iter().any(|cp| ENS.nsm_check.contains(cp)) {
         let decomposed = nfd(cps);
         let mut i = 1usize;
         while i < decomposed.len() {
@@ -698,7 +972,8 @@ fn error_disallowed(cp: u32) -> EnsError {
 
 fn error_group_member(group: usize, cp: u32) -> EnsError {
     let mut quoted = quoted_cp(cp);
-    if let Some(gg) = ENS.groups.iter().find(|g| g.primary.contains(&cp)) {
+    if let Some(&gg) = ENS.primary_group.get(&cp) {
+        let gg = &ENS.groups[gg];
         quoted = format!("{} {quoted}", gg.name);
     }
     EnsError::new(format!(
@@ -709,6 +984,22 @@ fn error_group_member(group: usize, cp: u32) -> EnsError {
 
 fn error_placement(where_: &str) -> EnsError {
     EnsError::new(format!("illegal placement: {where_}"))
+}
+
+#[derive(Debug, Clone, Copy)]
+enum NormalizeForm {
+    Nfc,
+    Nfd,
+}
+
+impl NormalizeForm {
+    fn apply(self, cps: &[u32]) -> Vec<u32> {
+        match self {
+            Self::Nfc if !requires_check(cps) => cps.to_vec(),
+            Self::Nfc => nfc(cps),
+            Self::Nfd => nfd(cps),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -724,11 +1015,7 @@ fn filter_emoji(cps: &[u32], filter: EmojiFilter) -> Vec<u32> {
     }
 }
 
-fn tokens_from_str(
-    input: &[u32],
-    nf: fn(&[u32]) -> Vec<u32>,
-    ef: EmojiFilter,
-) -> Result<Vec<NormToken>> {
+fn tokens_from_str(input: &[u32], nf: NormalizeForm, ef: EmojiFilter) -> Result<Vec<NormToken>> {
     let mut ret = Vec::new();
     let mut chars = Vec::new();
     let mut input = input.to_vec();
@@ -738,7 +1025,7 @@ fn tokens_from_str(
         if let Some(emoji) = consume_emoji_reversed(&mut input, None) {
             if !chars.is_empty() {
                 ret.push(NormToken {
-                    cps: nf(&chars),
+                    cps: nf.apply(&chars),
                     is_emoji: false,
                 });
                 chars.clear();
@@ -761,7 +1048,7 @@ fn tokens_from_str(
 
     if !chars.is_empty() {
         ret.push(NormToken {
-            cps: nf(&chars),
+            cps: nf.apply(&chars),
             is_emoji: false,
         });
     }
